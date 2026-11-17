@@ -51,3 +51,7 @@ makingpet:
   jwt:
     secret: ${MAKINGPET_JWT_SECRET:}    # Base64, 32바이트 이상. 비우면 기동마다 랜덤(로컬 전용)
     access-seconds: ${JWT_ACCESS_SECONDS:1800}
+  admin:                                # 관리자 계정 시드 (AdminAccountSeeder). 비밀번호가 비면 만들지 않는다.
+    email: ${MAKINGPET_ADMIN_EMAIL:admin@makingpet.local}
+    nickname: ${MAKINGPET_ADMIN_NICKNAME:운영자}
+    password: ${MAKINGPET_ADMIN_PASSWORD:}

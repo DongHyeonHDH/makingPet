@@ -210,6 +210,15 @@ notices (작성자 = members)
 | visible | boolean | |
 | sort_order | int | |
 
+### shop_purchases (W7 추가)
+| 컬럼 | 타입 | 설명 |
+|---|---|---|
+| id | uuid PK | S-3 응답 `purchaseId` = 원장 `coin_transactions.ref_id` (ref_type `SHOP_PURCHASE`) |
+| member_id | uuid | idx (member_id, created_at) |
+| product_id / item_id | uuid | |
+| quantity | int | 1~10 |
+| unit_price / total_price | int | 구매 시점 가격 스냅샷 |
+
 ### auction_listings
 | 컬럼 | 타입 | NULL | 키 | 설명 |
 |---|---|---|---|---|
@@ -238,6 +247,8 @@ notices (작성자 = members)
 
 ### notices
 | id uuid PK | title varchar(100) | content text | author_id uuid | pinned boolean | published_at timestamptz | deleted_at |
+
+> W7 구현: `content`는 `varchar(20000)`(H2·PostgreSQL 공통), `author_id`는 NULL 허용(시드 공지는 작성자 없음 → "운영자" 표시). `published_at`이 미래면 예약 게시.
 
 ## 관계 요약
 | 관계 | 카디널리티 | FK | ON DELETE |

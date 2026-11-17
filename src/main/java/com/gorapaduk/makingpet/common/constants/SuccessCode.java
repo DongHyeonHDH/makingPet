@@ -30,6 +30,13 @@ public enum SuccessCode {
     // ===== Gacha =====
     GACHA_NEW_PET("새 친구를 만났습니다!"),
     GACHA_REFUND_ONLY("이미 있는 친구들이네요. 코인으로 돌려받았습니다."),
+
+    // ===== Admin =====
+    ADMIN_CREATED("등록되었습니다."),
+    ADMIN_UPDATED("수정되었습니다."),
+    NOTICE_CREATED("공지를 등록했습니다."),
+    NOTICE_UPDATED("공지를 수정했습니다."),
+    NOTICE_DELETED("공지를 삭제했습니다."),
     ;
 
     private final String message;

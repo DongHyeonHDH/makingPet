@@ -1,5 +1,6 @@
 package com.gorapaduk.makingpet.item.repository;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -21,4 +22,7 @@ public interface InventoryItemRepository extends JpaRepository<InventoryItem, In
 
     @Query("select i from InventoryItem i where i.id.memberId = :memberId and i.quantity > 0")
     List<InventoryItem> findOwned(@Param("memberId") UUID memberId);
+
+    @Query("select i from InventoryItem i where i.id.memberId = :memberId and i.id.itemId in :itemIds")
+    List<InventoryItem> findByMemberAndItems(@Param("memberId") UUID memberId, @Param("itemIds") Collection<UUID> itemIds);
 }

@@ -1,6 +1,7 @@
 package com.gorapaduk.makingpet.member.service;
 
 import java.util.Locale;
+import java.util.Optional;
 import java.util.UUID;
 
 import com.gorapaduk.makingpet.common.constants.ErrorCode;
@@ -9,6 +10,7 @@ import com.gorapaduk.makingpet.item.domain.Item;
 import com.gorapaduk.makingpet.item.service.InventoryService;
 import com.gorapaduk.makingpet.item.service.ItemService;
 import com.gorapaduk.makingpet.member.domain.Member;
+import com.gorapaduk.makingpet.member.domain.Role;
 import com.gorapaduk.makingpet.member.dto.LoginRequest;
 import com.gorapaduk.makingpet.member.dto.MemberResponse;
 import com.gorapaduk.makingpet.member.dto.NicknameUpdateRequest;
@@ -73,22 +75,51 @@ public class MemberService {
         if (members.existsByEmail(email)) throw new BusinessException(ErrorCode.MEMBER_EMAIL_DUPLICATED);
         if (members.existsByNickname(nickname)) throw new BusinessException(ErrorCode.MEMBER_NICKNAME_DUPLICATED);
 
-        Member member = Member.create(email, nickname, passwordEncoder.encode(request.password()));
+        Member member = createAccount(Member.create(email, nickname, passwordEncoder.encode(request.password())));
+        return MemberResponse.from(member, walletService.getBalance(member.getId()).balance(), null,
+                rewardService.today(member.getId()), 0);
+    }
+
+    /**
+     * 관리자 계정 시드(AdminAccountSeeder) 전용. 닉네임 금칙어 검사를 건너뛰어 "운영자" 같은 예약 닉네임을 쓸 수 있다.
+     * 일반 가입과 같은 초기 지급(지갑·선물·기본 테마·마이 홈)을 받는다.
+     */
+    @Transactional
+    public Member createPrivileged(String email, String nickname, String rawPassword, Role role) {
+        String normalized = normalizeEmail(email);
+        if (members.existsByEmail(normalized)) throw new BusinessException(ErrorCode.MEMBER_EMAIL_DUPLICATED);
+        if (members.existsByNickname(nickname)) throw new BusinessException(ErrorCode.MEMBER_NICKNAME_DUPLICATED);
+        Member member = Member.create(normalized, nickname, passwordEncoder.encode(rawPassword));
+        member.changeRole(role);
+        return createAccount(member);
+    }
+
+    public boolean existsByEmail(String email) {
+        return members.existsByEmail(normalizeEmail(email));
+    }
+
+    /** 공지 작성자 표시 등. 탈퇴 회원도 치환된 닉네임으로 돌려준다. 없으면 empty (예외를 던지지 않는다). */
+    public Optional<String> findNickname(UUID memberId) {
+        return members.findById(memberId).map(Member::getNickname);
+    }
+
+    /** 가입 공통: 저장 → 지갑 개설 → 가입 선물 → 기본 테마 지급 → 마이 홈 생성(테마 reserve). */
+    private Member createAccount(Member newMember) {
+        Member member;
+        String email = newMember.getEmail();
         try {
-            member = members.saveAndFlush(member);
+            member = members.saveAndFlush(newMember);
         } catch (DataIntegrityViolationException e) {           // 동시 가입 경합
             if (members.existsByEmail(email)) throw new BusinessException(ErrorCode.MEMBER_EMAIL_DUPLICATED);
             throw new BusinessException(ErrorCode.MEMBER_NICKNAME_DUPLICATED);
         }
 
         walletService.open(member.getId());
-        var wallet = walletService.credit(member.getId(), SIGNUP_GIFT_COINS, TransactionReason.SIGNUP_GIFT,
-                "MEMBER", member.getId());
+        walletService.credit(member.getId(), SIGNUP_GIFT_COINS, TransactionReason.SIGNUP_GIFT, "MEMBER", member.getId());
         Item defaultTheme = itemService.getByCode(Item.DEFAULT_THEME_CODE);
         inventoryService.grant(member.getId(), defaultTheme.getId(), 1);
         homeService.create(member.getId(), defaultTheme.getId());
-
-        return MemberResponse.from(member, wallet.balance(), null, rewardService.today(member.getId()), 0);
+        return member;
     }
 
     /** M-2. 로그인. 이메일/비밀번호 어느 쪽이 틀렸는지 구분하지 않는다. */

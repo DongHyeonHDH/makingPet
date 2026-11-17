@@ -1,5 +1,6 @@
 package com.gorapaduk.makingpet.item.service;
 
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -63,6 +64,13 @@ public class InventoryService {
     public int available(UUID memberId, UUID itemId) {
         return inventory.findById(new com.gorapaduk.makingpet.item.domain.InventoryItemId(memberId, itemId))
                 .map(InventoryItem::getAvailable).orElse(0);
+    }
+
+    /** 여러 아이템의 보유 수량(quantity). 없는 아이템은 맵에 없다. 상점 목록의 owned 등에 쓴다. */
+    public Map<UUID, Integer> quantities(UUID memberId, Collection<UUID> itemIds) {
+        if (itemIds.isEmpty()) return Map.of();
+        return inventory.findByMemberAndItems(memberId, itemIds).stream()
+                .collect(Collectors.toMap(InventoryItem::getItemId, InventoryItem::getQuantity, (a, b) -> a));
     }
 
     /** I-2 */
