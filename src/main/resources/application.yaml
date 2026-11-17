@@ -1,0 +1,55 @@
+spring:
+  application:
+    name: makingPet
+  datasource:
+    # 로컬 기본: H2 인메모리(MySQL 모드 아님, PostgreSQL 호환 모드). 운영은 env 로 PostgreSQL 주입.
+    url: ${DB_URL:jdbc:h2:mem:makingpet;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1}
+    username: ${DB_USERNAME:sa}
+    password: ${DB_PASSWORD:}
+  jpa:
+    hibernate:
+      ddl-auto: ${DDL_AUTO:update}      # TODO V1__init.sql 작성 후 validate 로 전환
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+        type:
+          prefer_native_enum_types: false   # enum 은 H2·PostgreSQL 모두 varchar. 마이그레이션 SQL 을 한 벌로 유지한다.
+  flyway:
+    enabled: ${FLYWAY_ENABLED:false}   # TODO V1__init.sql 작성 후 true
+    locations: classpath:db/migration
+    # ddl-auto=update 로 이미 만들어진 DB 에 처음 붙일 때만 true (기존 스키마를 V1 로 간주하고 V2 부터 적용).
+    baseline-on-migrate: ${FLYWAY_BASELINE_ON_MIGRATE:false}
+    baseline-version: 1
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      timeout: 2s
+      repositories:
+        enabled: false                    # Redis 는 캐시·토큰 저장소로만 쓴다. 리포지토리는 JPA 만.
+  cache:
+    type: ${CACHE_TYPE:none}              # none: 캐시 끔(로컬·테스트, Redis 불필요) / redis: 운영
+  h2:
+    console:
+      enabled: ${H2_CONSOLE:true}
+      path: /h2-console
+  jackson:
+    time-zone: Asia/Seoul
+
+springdoc:
+  paths-to-match: /api/v1/**
+  api-docs:
+    enabled: ${API_DOCS_ENABLED:true}     # 운영에서는 false 권장
+    path: /v3/api-docs
+  swagger-ui:
+    enabled: ${API_DOCS_ENABLED:true}
+    path: /v3/swagger-ui
+    operations-sorter: alpha
+    tags-sorter: alpha
+
+makingpet:
+  jwt:
+    secret: ${MAKINGPET_JWT_SECRET:}    # Base64, 32바이트 이상. 비우면 기동마다 랜덤(로컬 전용)
+    access-seconds: ${JWT_ACCESS_SECONDS:1800}
