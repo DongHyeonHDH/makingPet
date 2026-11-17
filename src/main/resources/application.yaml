@@ -8,15 +8,13 @@ spring:
     password: ${DB_PASSWORD:}
   jpa:
     hibernate:
-      ddl-auto: ${DDL_AUTO:update}      # TODO V1__init.sql 작성 후 validate 로 전환
+      ddl-auto: ${DDL_AUTO:validate}    # 스키마는 Flyway(db/migration)가 만든다. Hibernate 는 검증만 한다.
     open-in-view: false
     properties:
       hibernate:
         format_sql: true
-        type:
-          prefer_native_enum_types: false   # enum 은 H2·PostgreSQL 모두 varchar. 마이그레이션 SQL 을 한 벌로 유지한다.
   flyway:
-    enabled: ${FLYWAY_ENABLED:false}   # TODO V1__init.sql 작성 후 true
+    enabled: ${FLYWAY_ENABLED:true}
     locations: classpath:db/migration
     # ddl-auto=update 로 이미 만들어진 DB 에 처음 붙일 때만 true (기존 스키마를 V1 로 간주하고 V2 부터 적용).
     baseline-on-migrate: ${FLYWAY_BASELINE_ON_MIGRATE:false}

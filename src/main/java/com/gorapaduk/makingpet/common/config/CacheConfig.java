@@ -39,6 +39,7 @@ public class CacheConfig implements CachingConfigurer {
         JavaType itemCatalogType = objectMapper.getTypeFactory()
                 .constructParametricType(PageResponse.class, ItemSummary.class);
         return builder -> builder
+                .transactionAware()          // put·evict 를 커밋 후로 미룬다. 롤백된 데이터가 캐시에 남지 않게.
                 .withCacheConfiguration(ITEM_CATALOG, jsonCache(objectMapper, itemCatalogType, Duration.ofMinutes(10)));
     }
 
