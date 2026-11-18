@@ -9,6 +9,10 @@
 |---|---|
 | members | 기존 테이블(id, email, nickname, password_hash)에 `role` 추가 예정 |
 | user_pets | 중복 펫 = 코인 환급 확정(D-8)에 따라 `(member_id, species_id)` 유니크 제약 추가 (삭제된 펫 제외 부분 인덱스) |
+| pet_species | D-13 (2026-11-18): 4계열 × 4단계. `line_code`, `evolution_stage`, `next_species_id` 추가. 진화형 12종 추가(비활성) |
+| user_pets | D-13: `stage`는 쓰지 않는다. 단계는 `pet_species.evolution_stage`에서 얻는다 |
+| gacha_pity_counters, gacha_pools.pity_threshold | D-13: 천장 폐지로 미사용. 제거 검토 |
+| species_evolution_costs, pet_evolutions | D-13: M2 진화용 신규 (마이그레이션 V3) |
 
 ## 한 장 다이어그램
 ```
@@ -60,6 +64,12 @@ notices (작성자 = members)
 | base_asset_key | varchar(200) | N | | | 기본 이미지 키 |
 | description | varchar(300) | Y | | | 도감 설명 |
 | active | boolean | N | true | | 뽑기·도감 노출 |
+| line_code | varchar(20) | N | | IDX | 계열: `duck` / `dog` / `cat` / `dinosaur` (D-13) |
+| evolution_stage | smallint | N | 1 | | 1~4. 희귀도와 1:1 (1 = COMMON … 4 = LEGENDARY) |
+| next_species_id | uuid | Y | | FK self | 같은 계열 다음 단계 종. 4단계는 NULL |
+- UK: `(line_code, evolution_stage)` — 계열마다 단계별 1종
+- CHECK: `rarity`가 `evolution_stage`와 맞는다 (1 COMMON / 2 RARE / 3 EPIC / 4 LEGENDARY)
+- 뽑기 풀 엔트리는 `evolution_stage = 1`인 종만 허용한다(서비스에서 검증)
 
 ### species_motions (친밀도 단계별 해금 움직임)
 | 컬럼 | 타입 | NULL | 키 | 설명 |
@@ -67,6 +77,23 @@ notices (작성자 = members)
 | species_id | uuid | N | PK, FK | |
 | affection_level | smallint | N | PK | 2~5 |
 | motion_item_id | uuid | N | FK items | |
+
+### species_evolution_costs (M2, 진화 재료 — D-13)
+| 컬럼 | 타입 | NULL | 키 | 설명 |
+|---|---|---|---|---|
+| species_id | uuid | N | PK, FK | 진화 **전** 종 |
+| fruit_item_id | uuid | N | PK, FK items(FRUIT) | |
+| quantity | smallint | N | | 필요 개수 |
+- 필요 친밀도 단계는 규칙 §8-2 (2단계 종 3 / 3단계 종 4 / 4단계 종 5). 바꿀 일이 생기면 `pet_species`에 컬럼으로 뺀다.
+
+### pet_evolutions (M2, 진화 기록 — D-13)
+| 컬럼 | 타입 | NULL | 키 | 설명 |
+|---|---|---|---|---|
+| id | uuid | N | PK | |
+| pet_id | uuid | N | FK user_pets | |
+| from_species_id | uuid | N | FK | |
+| to_species_id | uuid | N | FK | |
+| created_at | timestamptz | N | | |
 
 ### user_pets (보유 펫)
 | 컬럼 | 타입 | NULL | 기본값 | 키 | 설명 |
@@ -79,7 +106,7 @@ notices (작성자 = members)
 | mood_updated_at | timestamptz | N | now | | 지연 계산 기준 |
 | affection | int | N | 0 | | 누적 |
 | affection_level | smallint | N | 1 | | |
-| stage | smallint | N | 1 | | v1.1 진화 대비 |
+| stage | smallint | N | 1 | | D-13 이후 미사용. 단계는 `pet_species.evolution_stage`에서 얻는다. 제거 검토 |
 | obtained_from | varchar(20) | N | | | GACHA / GIFT / ADMIN |
 | deleted_at | timestamptz | Y | | | 놓아주기 (소프트) |
 - UK: `(member_id, species_id) WHERE deleted_at IS NULL` — 종당 1마리. 뽑기 중복 판정의 근거이자 동시 뽑기 시 안전장치
@@ -97,7 +124,7 @@ notices (작성자 = members)
 | id | uuid | N | | PK | |
 | code | varchar(40) | N | | UK | `ribbon` |
 | name | varchar(40) | N | | | 딸기 리본 |
-| category | varchar(12) | N | | | TOP / BOTTOM / ACCESSORY / MOTION / FURNITURE / THEME / (v1.1) FRUIT |
+| category | varchar(12) | N | | | TOP / BOTTOM / ACCESSORY / MOTION / FURNITURE / THEME / (M2) FRUIT |
 | rarity | varchar(12) | N | 'COMMON' | | |
 | asset_key | varchar(200) | N | | | 이미지 또는 motion_key |
 | tradable | boolean | N | true | | MOTION은 false |
