@@ -20,11 +20,12 @@
 **Listing 응답 조각**
 ```json
 { "id": "uuid", "item": { "...ItemSummary" }, "seller": { "id": "uuid", "nickname": "오리사랑" },
-  "quantity": 1, "price": 55, "status": "ON_SALE",
+  "quantity": 1, "price": 55, "unitPrice": 55.0, "status": "ON_SALE",
   "expiresAt": "2026-11-17T23:30:00+09:00", "remainingSeconds": 86200,
   "favorited": false, "isMine": false, "createdAt": "..." }
 ```
 `favorited`, `isMine`은 로그인 시만 계산(익명이면 false).
+`quantity`는 1, 열매 묶음이면 1~10 (D-14). `price`는 묶음 전체 가격, `unitPrice`는 표시·정렬용 단가.
 
 ---
 
@@ -32,10 +33,10 @@
 | query | 타입 | 기본 | 비고 |
 |---|---|---|---|
 | q | string | | 아이템 이름 부분 일치 (스냅샷 `item_name`) |
-| category | enum | | TOP / BOTTOM / ACCESSORY / FURNITURE / THEME |
+| category | enum | | TOP / BOTTOM / ACCESSORY / FURNITURE / THEME / FRUIT |
 | itemId | uuid | | 특정 아이템만 (시세 화면에서 진입) |
 | maxPrice | int | | |
-| sort | string | `createdAt,desc` | 화이트리스트: `price,asc` `price,desc` `expiresAt,asc` `createdAt,desc` |
+| sort | string | `createdAt,desc` | 화이트리스트: `price,asc` `price,desc` `unitPrice,asc` `unitPrice,desc` `expiresAt,asc` `createdAt,desc` |
 | page, size | | 0, 20 | |
 `ON_SALE`이고 `expires_at > now`인 매물만.
 ### 응답 200: `PageResponse<Listing>`
@@ -48,23 +49,26 @@
 ---
 
 ## A-3. POST `/api/v1/auction/listings`
-**설명**: 한 트랜잭션: 거래 가능 확인 → `item.withdraw(itemId, 1)`(에스크로: quantity −1) → 매물 생성.
+**설명**: 한 트랜잭션: 거래 가능 확인 → `item.withdraw(itemId, quantity)`(에스크로: 묶음 수량만큼 차감) → 매물 생성.
 **헤더**: `Idempotency-Key` 필수
 ### 요청
 ```json
-{ "itemId": "uuid", "price": 55, "durationHours": 24 }
+{ "itemId": "uuid", "quantity": 5, "price": 200, "durationHours": 24 }
 ```
 | 필드 | 제약 |
 |---|---|
 | itemId | tradable 아이템 |
-| price | 1~99,999 |
+| quantity | 선택, 기본 1. 1~10. 2 이상은 FRUIT만 (D-14) |
+| price | 1~99,999. 묶음 전체 가격 |
 | durationHours | 12 / 24 / 48 |
 ### 응답 201: Listing (`isMine: true`)
 ### 에러
 | HTTP | code | 발생 조건 |
 |---|---|---|
 | 400 | ITEM_NOT_TRADABLE | MOTION 등 |
-| 400 | INVENTORY_INSUFFICIENT | available < 1 |
+| 400 | INVENTORY_INSUFFICIENT | available < quantity |
+| 400 | AUCTION_BUNDLE_NOT_ALLOWED | 열매가 아닌데 quantity ≥ 2 |
+| 400 | VALIDATION_FAILED | quantity가 1~10 밖 |
 | 404 | ITEM_NOT_FOUND | |
 | 409 | AUCTION_LISTING_LIMIT_EXCEEDED | ON_SALE 10건 초과 |
 
@@ -86,8 +90,8 @@
 2. 구매자 == 판매자면 400.
 3. `wallet.debit(buyer, price, AUCTION_BUY, listingId)` → 부족 시 400.
 4. `wallet.credit(seller, price − fee, AUCTION_SELL, listingId)`, fee = ceil(price × 0.05), 최소 1. 수수료는 원장에 `AUCTION_FEE`로 판매자 기준 −fee 기록(총량 추적용).
-5. `item.grant(buyer, itemId, 1)`.
-6. 매물 SOLD, `closed_at`, `auction_trades` 생성.
+5. `item.grant(buyer, itemId, listing.quantity)` — 묶음은 통째로 지급, 부분 구매 없음.
+6. 매물 SOLD, `closed_at`, `auction_trades` 생성(수량·단가 스냅샷 포함).
 - 지갑 잠금 순서: member_id 오름차순(데드락 방지).
 ### 에러
 | HTTP | code | 발생 조건 |
@@ -156,6 +160,7 @@
   { "item": { "...ItemSummary" }, "lowestOnSale": 50, "onSaleCount": 4, "avg7d": 58, "trades7d": 12, "last": { "price": 55, "tradedAt": "..." } } ] } }
 ```
 매물이 없으면 `lowestOnSale: null`. 7일 체결이 없으면 `avg7d: null`. 응답은 60초 캐시 가능.
+열매처럼 묶음이 섞이는 아이템은 `lowestOnSale`·`avg7d`·`last.price`를 **단가** 기준으로 주고, `trades7d`는 체결 수량 합계다 (D-14).
 
 ---
 

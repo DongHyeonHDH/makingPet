@@ -49,20 +49,7 @@ Idempotency-Key: <uuid>        # 뽑기·슬롯·상점 구매·경매 등록/�
 ```
 
 ## 확정된 결정
-| # | 결정 | 확정값 |
-|---|---|---|
-| D-1 | 경로 접두사 | `/api/v1` |
-| D-2 | 응답 형식 | `ApiResponse<T>` 래퍼 (기존 AuthController·SecurityConfig 수정) |
-| D-3 | 외부 ID | UUID |
-| D-4 | DB | PostgreSQL |
-| D-5 | Refresh 토큰 | M2, Redis, 회전 방식 |
-| D-6 | `auth` 패키지 | `member`로 개명 + 5폴더 규칙 |
-| D-7 | 멱등 키 | 코인·아이템이 움직이는 POST 5종에 필수 |
-| D-8 | 중복 펫 | 코인 환급 (종당 1마리) |
-| D-9 | 실시간 | M3 SSE 1채널 (프로토콜 명세서에서 상세) |
-| D-10 | 쿨다운 HTTP | 429 + `Retry-After` |
-| D-11 | 남의 마이 홈 | 익명 허용 (PUBLIC만) |
-| D-12 | 신발 | ACCESSORY 슬롯 |
+> 2026-11-18부터 결정은 `../00_overview/02_결정_목록.md` 한 곳에서 관리한다. 이 자리에 있던 D-1~D-12 표도 그 문서로 옮겼다.
 
 ## 기존 코드에 필요한 변경 (M0 작업)
 | 파일 | 변경 |

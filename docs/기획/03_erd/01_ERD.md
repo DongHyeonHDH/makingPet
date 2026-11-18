@@ -9,10 +9,12 @@
 |---|---|
 | members | 기존 테이블(id, email, nickname, password_hash)에 `role` 추가 예정 |
 | user_pets | 중복 펫 = 코인 환급 확정(D-8)에 따라 `(member_id, species_id)` 유니크 제약 추가 (삭제된 펫 제외 부분 인덱스) |
-| pet_species | D-13 (2026-11-18): 4계열 × 4단계. `line_code`, `evolution_stage`, `next_species_id` 추가. 진화형 12종 추가(비활성) |
-| user_pets | D-13: `stage`는 쓰지 않는다. 단계는 `pet_species.evolution_stage`에서 얻는다 |
+| pet_species | D-13·D-14 (2026-11-18): 4계열 × 29형태 = 116종. `line_code`, `attribute_count`, `primary_attribute`, `sub_attributes` 추가. 진화형 112형태 추가(아트 전 비활성) |
+| user_pets | D-13: `stage`는 쓰지 않는다. 단계는 `pet_species.attribute_count`에서 얻는다 |
 | gacha_pity_counters, gacha_pools.pity_threshold | D-13: 천장 폐지로 미사용. 제거 검토 |
-| species_evolution_costs, pet_evolutions | D-13: M2 진화용 신규 (마이그레이션 V3) |
+| evolution_costs, pet_evolutions, items.attribute | D-14: M2 진화용 신규 (마이그레이션 V3) |
+| species_motions | D-14: PK를 `(species_id, affection_level)`에서 `(motion_group, affection_level)`로. 움직임은 계열·주속성 단위 공유 |
+| items | D-14: `FRUIT` 4종 추가, `tradable = true` |
 
 ## 한 장 다이어그램
 ```
@@ -65,34 +67,40 @@ notices (작성자 = members)
 | description | varchar(300) | Y | | | 도감 설명 |
 | active | boolean | N | true | | 뽑기·도감 노출 |
 | line_code | varchar(20) | N | | IDX | 계열: `duck` / `dog` / `cat` / `dinosaur` (D-13) |
-| evolution_stage | smallint | N | 1 | | 1~4. 희귀도와 1:1 (1 = COMMON … 4 = LEGENDARY) |
-| next_species_id | uuid | Y | | FK self | 같은 계열 다음 단계 종. 4단계는 NULL |
-- UK: `(line_code, evolution_stage)` — 계열마다 단계별 1종
-- CHECK: `rarity`가 `evolution_stage`와 맞는다 (1 COMMON / 2 RARE / 3 EPIC / 4 LEGENDARY)
-- 뽑기 풀 엔트리는 `evolution_stage = 1`인 종만 허용한다(서비스에서 검증)
+| attribute_count | smallint | N | 0 | | 속성 수 0~3. 희귀도와 1:1 (0 = COMMON … 3 = LEGENDARY) |
+| primary_attribute | varchar(10) | N | '' | | 주속성 `FIRE`/`WATER`/`GRASS`/`ELECTRIC`. 기본종은 빈 문자열 |
+| sub_attributes | varchar(30) | N | '' | | 부속성 알파벳순 쉼표 목록 (`GRASS,WATER`). 없으면 빈 문자열 |
+| motion_group | varchar(40) | N | | IDX | 움직임 그룹. 기본종 = 계열 코드, 진화형 = `<계열>_<주속성>` (D-14) |
+- UK: `(line_code, primary_attribute, sub_attributes)` — 계열 안에서 형태당 1행. NULL 대신 빈 문자열을 쓰는 이유: PostgreSQL 유니크는 NULL끼리 다르다고 본다
+- CHECK: `rarity`가 `attribute_count`와 맞는다 (0 COMMON / 1 RARE / 2 EPIC / 3 LEGENDARY). `primary_attribute`는 `sub_attributes`에 없다
+- 뽑기 풀 엔트리는 `attribute_count = 0`인 종만 허용한다(서비스에서 검증)
 
 ### species_motions (친밀도 단계별 해금 움직임)
 | 컬럼 | 타입 | NULL | 키 | 설명 |
 |---|---|---|---|---|
-| species_id | uuid | N | PK, FK | |
+| motion_group | varchar(40) | N | PK | D-14: 종이 아니라 움직임 그룹 단위 (`duck`, `duck_fire`). M1은 기본종 코드와 같아 그대로 동작 |
 | affection_level | smallint | N | PK | 2~5 |
 | motion_item_id | uuid | N | FK items | |
 
-### species_evolution_costs (M2, 진화 재료 — D-13)
+### evolution_costs (M2, 진화 비용 — D-14)
 | 컬럼 | 타입 | NULL | 키 | 설명 |
 |---|---|---|---|---|
-| species_id | uuid | N | PK, FK | 진화 **전** 종 |
-| fruit_item_id | uuid | N | PK, FK items(FRUIT) | |
-| quantity | smallint | N | | 필요 개수 |
-- 필요 친밀도 단계는 규칙 §8-2 (2단계 종 3 / 3단계 종 4 / 4단계 종 5). 바꿀 일이 생기면 `pet_species`에 컬럼으로 뺀다.
+| to_attribute_count | smallint | N | PK | 진화 **후** 속성 수 1~3 |
+| required_affection_level | smallint | N | | 3 / 4 / 5 |
+| fruit_quantity | smallint | N | | 고른 속성 열매 3 / 5 / 8 |
+- 규칙 §8-5의 수치를 코드 수정 없이 조정하려고 테이블로 뺀다. 행은 3개뿐이다.
+- 결과 형태는 (계열, 주속성, 부속성 + 새 속성)으로 `pet_species`에서 찾는다. 다음 종을 가리키는 FK는 두지 않는다(갈래가 여러 개라서).
 
-### pet_evolutions (M2, 진화 기록 — D-13)
+### pet_evolutions (M2, 진화 기록 — D-14)
 | 컬럼 | 타입 | NULL | 키 | 설명 |
 |---|---|---|---|---|
 | id | uuid | N | PK | |
 | pet_id | uuid | N | FK user_pets | |
 | from_species_id | uuid | N | FK | |
 | to_species_id | uuid | N | FK | |
+| attribute | varchar(10) | N | | 이번에 얻은 속성 |
+| fruit_item_id | uuid | N | FK items | |
+| fruit_quantity | smallint | N | | |
 | created_at | timestamptz | N | | |
 
 ### user_pets (보유 펫)
@@ -106,7 +114,7 @@ notices (작성자 = members)
 | mood_updated_at | timestamptz | N | now | | 지연 계산 기준 |
 | affection | int | N | 0 | | 누적 |
 | affection_level | smallint | N | 1 | | |
-| stage | smallint | N | 1 | | D-13 이후 미사용. 단계는 `pet_species.evolution_stage`에서 얻는다. 제거 검토 |
+| stage | smallint | N | 1 | | D-13 이후 미사용. 단계는 `pet_species.attribute_count`에서 얻는다. 제거 검토 |
 | obtained_from | varchar(20) | N | | | GACHA / GIFT / ADMIN |
 | deleted_at | timestamptz | Y | | | 놓아주기 (소프트) |
 - UK: `(member_id, species_id) WHERE deleted_at IS NULL` — 종당 1마리. 뽑기 중복 판정의 근거이자 동시 뽑기 시 안전장치
@@ -128,6 +136,7 @@ notices (작성자 = members)
 | rarity | varchar(12) | N | 'COMMON' | | |
 | asset_key | varchar(200) | N | | | 이미지 또는 motion_key |
 | tradable | boolean | N | true | | MOTION은 false |
+| attribute | varchar(10) | Y | | | `FRUIT`만. 이 열매가 주는 속성 (D-14) |
 | active | boolean | N | true | | |
 
 ### inventory_items (보유 수량)
@@ -254,8 +263,9 @@ notices (작성자 = members)
 | item_id | uuid | N | FK | idx (item_id, status, price) — 시세·검색 |
 | item_name | varchar(40) | N | | 검색용 스냅샷 |
 | item_category | varchar(12) | N | | 필터용 스냅샷 |
-| quantity | int | N | | MVP 1 |
-| price | int | N | | 1~99,999 |
+| quantity | int | N | | 1~10 (기본 1). 2 이상은 `FRUIT`만 (D-14, 서비스에서 검증) |
+| price | int | N | | 1~99,999. 묶음이면 묶음 전체 가격 |
+| unit_price | numeric(7,1) | N | | price ÷ quantity, 소수 첫째 자리 반올림. 단가 정렬·시세용. idx (item_id, status, unit_price) |
 | status | varchar(10) | N | | ON_SALE / SOLD / CANCELLED / EXPIRED / REMOVED |
 | expires_at | timestamptz | N | | idx (status, expires_at) — 만료 스케줄러 |
 | closed_at | timestamptz | Y | | |
@@ -267,7 +277,9 @@ notices (작성자 = members)
 | listing_id | uuid UK | 매물당 1건 |
 | buyer_id, seller_id | uuid | |
 | item_id | uuid | idx (item_id, created_at) — 시세 |
-| price, fee, seller_income | int | |
+| quantity | int | 거래 수량 (묶음) |
+| price, fee, seller_income | int | 묶음 전체 기준 |
+| unit_price | numeric(7,1) | 시세(단가 평균)용 스냅샷 |
 
 ### auction_favorites
 | member_id, listing_id (PK) | created_at |
@@ -318,7 +330,6 @@ notices (작성자 = members)
 | revoked_at | timestamptz | Y | | |
 
 ## 보류(v1.1) 테이블
-- `evolution_stages(species_id, stage, asset_key, required_affection_level)`
-- `evolution_requirements(species_id, stage, item_id, quantity)`
-- `reward_tables(type, item_id|coin, weight)` — 열매 지급
+- ~~`evolution_stages`, `evolution_requirements`~~ → D-14로 대체: `pet_species` 속성 컬럼 + `evolution_costs`·`pet_evolutions` (M2)
+- `reward_tables(type, item_id|coin, weight)` — 열매 지급 (M2, R-06)
 - `home_likes`, `guestbook_entries`
