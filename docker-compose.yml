@@ -1,0 +1,56 @@
+# 로컬 개발용 인프라 (PostgreSQL + Redis)
+# 앱(Spring Boot)은 IDE 또는 ./gradlew bootRun 으로 호스트에서 실행하고, 여기에 붙는다.
+# 사용법: docs/작업기록_2026-11-18_Docker_Compose_로컬_인프라.md
+name: makingpet
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: makingpet-db
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-makingpet}
+      POSTGRES_USER: ${POSTGRES_USER:-makingpet}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD 를 .env 에 설정하세요}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+      TZ: Asia/Seoul
+      PGTZ: Asia/Seoul
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"   # 내 PC 에서만 접속 가능
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+    networks: [makingpet-net]
+
+  redis:
+    image: redis:7-alpine
+    container_name: makingpet-redis
+    # appendonly: 재시작해도 데이터 유지 / requirepass: .env 의 REDIS_PASSWORD
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:-}"]
+    environment:
+      REDISCLI_AUTH: ${REDIS_PASSWORD:-}            # 헬스체크·redis-cli 가 비밀번호를 자동으로 사용
+      TZ: Asia/Seoul
+    ports:
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+    networks: [makingpet-net]
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  makingpet-net:
+    driver: bridge
